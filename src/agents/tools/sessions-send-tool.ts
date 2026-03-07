@@ -41,7 +41,7 @@ export function createSessionsSendTool(opts?: {
     label: "Session Send",
     name: "sessions_send",
     description:
-      "Send a message into another session. Use sessionKey or label to identify the target.",
+      "Send a message into another session. Use sessionKey or label to identify the target. For multi-turn conversation with an ACP or subagent session, pass the childSessionKey returned by sessions_spawn so follow-up messages go to the same session (one round per send; wait for completion before the next).",
     parameters: SessionsSendToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;

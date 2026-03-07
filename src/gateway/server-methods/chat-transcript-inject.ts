@@ -73,3 +73,78 @@ export function appendInjectedAssistantMessageToTranscript(params: {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
+
+/**
+ * Append a user message to a session transcript (e.g. prompt sent to ACP so the
+ * ACP session chat.history shows the dialogue).
+ */
+export function appendUserMessageToTranscript(params: {
+  transcriptPath: string;
+  message: string;
+  idempotencyKey?: string;
+  now?: number;
+}): GatewayInjectedTranscriptAppendResult {
+  const now = params.now ?? Date.now();
+  const messageBody: AppendMessageArg & Record<string, unknown> = {
+    role: "user",
+    content: [{ type: "text", text: params.message }],
+    timestamp: now,
+    ...(params.idempotencyKey ? { idempotencyKey: params.idempotencyKey } : {}),
+  };
+
+  try {
+    const sessionManager = SessionManager.open(params.transcriptPath);
+    const messageId = sessionManager.appendMessage(messageBody);
+    return { ok: true, messageId, message: messageBody };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Append an assistant message attributed to a subagent (e.g. Cursor ACP) so the UI
+ * can show it with the subagent's avatar. Stores __openclaw.sourceSessionKey on the message.
+ */
+export function appendSubagentResultToTranscript(params: {
+  transcriptPath: string;
+  message: string;
+  sourceSessionKey: string;
+  idempotencyKey?: string;
+  now?: number;
+}): GatewayInjectedTranscriptAppendResult {
+  const now = params.now ?? Date.now();
+  const usage = {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 0,
+    cost: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      total: 0,
+    },
+  };
+  const messageBody: AppendMessageArg & Record<string, unknown> = {
+    role: "assistant",
+    content: [{ type: "text", text: params.message }],
+    timestamp: now,
+    stopReason: "stop",
+    usage,
+    api: "openai-responses",
+    provider: "openclaw",
+    model: "gateway-subagent-result",
+    __openclaw: { sourceSessionKey: params.sourceSessionKey.trim() },
+    ...(params.idempotencyKey ? { idempotencyKey: params.idempotencyKey } : {}),
+  };
+
+  try {
+    const sessionManager = SessionManager.open(params.transcriptPath);
+    const messageId = sessionManager.appendMessage(messageBody);
+    return { ok: true, messageId, message: messageBody };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}

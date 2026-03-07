@@ -243,7 +243,8 @@ export class OpenClawApp extends LitElement {
   @state() sessionsLoading = false;
   @state() sessionsResult: SessionsListResult | null = null;
   @state() sessionsError: string | null = null;
-  @state() sessionsFilterActive = "";
+  /** Default: only show sessions active in the last 2 hours so closed/old ACP sub-sessions don't clutter the list. */
+  @state() sessionsFilterActive = "120";
   @state() sessionsFilterLimit = "120";
   @state() sessionsIncludeGlobal = true;
   @state() sessionsIncludeUnknown = false;

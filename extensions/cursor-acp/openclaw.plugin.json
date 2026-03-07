@@ -1,0 +1,53 @@
+{
+  "id": "cursor-acp",
+  "name": "Cursor ACP",
+  "description": "ACP runtime backend for Cursor CLI. Spawns `agent acp` and communicates over stdio. Use backend \"cursor-acp\" and agent \"cursor\" with acp.allowedAgents.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "command": {
+        "type": "string"
+      },
+      "cwd": {
+        "type": "string"
+      },
+      "permissionOutcome": {
+        "type": "string",
+        "enum": ["allow-once", "allow-always", "reject-once"]
+      },
+      "trustWorkspace": {
+        "type": "boolean"
+      },
+      "env": {
+        "type": "object",
+        "additionalProperties": { "type": "string" }
+      }
+    }
+  },
+  "uiHints": {
+    "command": {
+      "label": "Cursor agent command",
+      "help": "Path to Cursor CLI (default: agent). Use full path if agent is not on PATH."
+    },
+    "cwd": {
+      "label": "Default working directory",
+      "help": "Default cwd for ACP sessions when not set per session."
+    },
+    "permissionOutcome": {
+      "label": "Tool permission outcome",
+      "help": "Response to session/request_permission from Cursor: allow-once, allow-always, or reject-once.",
+      "advanced": true
+    },
+    "trustWorkspace": {
+      "label": "Trust workspace (--trust)",
+      "help": "Pass Cursor CLI --trust so the workspace is trusted without prompting (headless). Default true. Set false to rely on Cursor-side trust only (e.g. open folder in Cursor and trust once).",
+      "advanced": true
+    },
+    "env": {
+      "label": "Environment for agent process",
+      "help": "Optional env vars for the spawned Cursor process (e.g. HOME). Set HOME to the same value as where you ran `agent login` if the gateway runs with a different environment.",
+      "advanced": true
+    }
+  }
+}

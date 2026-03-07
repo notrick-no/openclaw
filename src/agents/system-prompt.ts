@@ -453,6 +453,8 @@ export function buildAgentSystemPrompt(params: {
           'On Discord, default ACP harness requests to thread-bound persistent sessions (`thread: true`, `mode: "session"`) unless the user asks otherwise.',
           "Set `agentId` explicitly unless `acp.defaultAgent` is configured, and do not route ACP harness requests through `subagents`/`agents_list` or local PTY exec flows.",
           'For ACP harness thread spawns, do not call `message` with `action=thread-create`; use `sessions_spawn` (`runtime: "acp"`, `thread: true`) as the single thread creation path.',
+          "Multi-turn with Cursor/ACP (e.g. five rounds without user sending each message): call `sessions_spawn` once, then for each follow-up round call `sessions_send` with `sessionKey` set to the `childSessionKey` from the spawn result; wait for the task completion event after each send before sending the next round. Do not spawn a new session per round.",
+          'When thread binding is unavailable (e.g. webchat), use `mode: "run"` and then use `sessions_send` with the spawn result\'s `childSessionKey` for each follow-up round so all rounds stay in the same ACP session; do not open a new session per round.',
         ]
       : []),
     "Do not poll `subagents list` / `sessions_list` in a loop; only check status on-demand (for intervention, debugging, or when explicitly asked).",

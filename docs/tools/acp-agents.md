@@ -62,6 +62,13 @@ Use ACP when you want an external harness runtime. Use sub-agents when you want 
 
 See also [Sub-agents](/tools/subagents).
 
+### Viewing ACP spawn progress and conversation
+
+- **Subagents list**: ACP spawns (including Cursor ACP) are registered as runs. Use the **Subagents** tool or `/subagents list` to see active and recent ACP runs alongside OpenClaw sub-agent runs.
+- **Conversation content**: The ACP session has its own session key (for example `agent:cursor:acp:<uuid>`). To see the Cursor (or other ACP) dialogue and progress in the UI, open that session in the control UI or in the channel thread that is bound to it. If you spawn with **streamTo: "parent"**, the child run’s output is relayed into the parent session so you see progress there without switching session.
+- **TUI / Control UI**: In the OpenClaw TUI, the agent does not see Cursor's live stream unless you spawn with **streamTo: "parent"**. Ask the agent to use Cursor ACP with `streamTo: "parent"` so you can see progress, or use a prompt that implies you want a summary in this session; the agent is instructed to pass `streamTo: "parent"` in that case. Relayed output is queued as system events to the current session and included in the next prompt, so the agent can summarize and you see progress when you send the next message or when the run completes.
+- **Knowing when the task is done**: Call the **subagents** tool with `action: "list"` and `recentMinutes` (e.g. 10) to see active and recent ACP runs; the list shows which runs exist and their status. With **streamTo: "parent"**, completion is relayed as a system event to the current session, so after the run finishes you can send a message (e.g. “任务完成了吗？总结一下”) and the agent will see the completion and summarize.
+
 ## Thread-bound sessions (channel-agnostic)
 
 When thread bindings are enabled for a channel adapter, ACP sessions can be bound to threads:
@@ -382,6 +389,63 @@ Current acpx built-in harness aliases:
 When OpenClaw uses the acpx backend, prefer these values for `agentId` unless your acpx config defines custom agent aliases.
 
 Direct acpx CLI usage can also target arbitrary adapters via `--agent <command>`, but that raw escape hatch is an acpx CLI feature (not the normal OpenClaw `agentId` path).
+
+## Cursor ACP backend (cursor-acp plugin)
+
+The **cursor-acp** plugin runs [Cursor CLI](https://cursor.com/docs/cli/acp) as an ACP server (`agent acp`) over stdio. Use it when you want OpenClaw to drive Cursor Agent as an ACP harness (persistent or one-shot sessions).
+
+- **Backend id**: `cursor-acp`
+- **Agent id**: `cursor` (only this value is supported)
+- **Requires**: Cursor CLI installed so that `agent acp` is available on PATH (or set `plugins.entries.cursor-acp.config.command` to the full path).
+
+Add `cursor` to `acp.allowedAgents` and set the backend to `cursor-acp` for spawns or bindings that should use Cursor:
+
+```json5
+{
+  acp: {
+    enabled: true,
+    backend: "acpx",
+    allowedAgents: ["codex", "cursor"],
+  },
+  plugins: {
+    entries: {
+      acpx: { enabled: true },
+      "cursor-acp": { enabled: true },
+    },
+  },
+}
+```
+
+To use Cursor for a specific spawn or binding, set `backend: "cursor-acp"` and `agentId: "cursor"`:
+
+```json5
+{
+  runtime: "acp",
+  agentId: "cursor",
+  backend: "cursor-acp",
+  mode: "persistent",
+  cwd: "/path/to/workspace",
+}
+```
+
+Plugin setup:
+
+```bash
+openclaw plugins install ./extensions/cursor-acp
+openclaw config set plugins.entries.cursor-acp.enabled true
+```
+
+Optional config in `plugins.entries.cursor-acp.config`:
+
+- `command`: Cursor CLI command (default: `agent`).
+- `cwd`: Default working directory for sessions.
+- `permissionOutcome`: Response to Cursor `session/request_permission` (e.g. workspace trust) — `allow-once`, `allow-always`, or `reject-once` (default: `allow-once`). This is applied both when creating a session and during turns. Use `allow-always` if you want to avoid repeated trust prompts for multiple spawns.
+- `trustWorkspace`: Pass Cursor CLI `--trust` so the workspace is trusted without prompting (headless mode). Default `true` so `session/new` returns a sessionId without Cursor-side pre-trust. Set `false` to rely on Cursor-side trust only (e.g. open the folder in Cursor and trust it once).
+- `env`: Optional env vars for the spawned `agent acp` process (e.g. `{ "HOME": "/home/youruser" }`). Use when the gateway runs with a different environment than the terminal where you ran `agent login`; Cursor stores login state per user (e.g. under `$HOME`), so the process must see the same `HOME` to find credentials.
+
+**Cursor login is global** (not per directory). Run `agent login` once in a terminal; the same credentials are used for all sessions. If you see `session/new did not return sessionId`, (1) the gateway process may have a different `HOME` or user — set `config.env.HOME` to the same as where you ran `agent login`, or start the gateway from that terminal; (2) **workspace trust** — the plugin passes Cursor CLI `--trust` by default (`trustWorkspace: true`). If it still fails, trust the workspace in Cursor: open the target folder in Cursor IDE and complete the trust prompt once (see [Cursor Agent Security](https://cursor.com/docs/agent/security)); or ensure `trustWorkspace` is not set to `false`.
+
+Run `/acp doctor` after enabling; if the backend reports Cursor CLI missing, install it (e.g. `curl https://cursor.com/install -fsS | bash`).
 
 ## Required config
 

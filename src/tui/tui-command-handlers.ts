@@ -150,12 +150,14 @@ export function createCommandHandlers(context: CommandHandlerContext) {
 
   const openSessionSelector = async () => {
     try {
+      // Only show sessions active in the last 2 hours so closed/old ACP sub-sessions don't clutter the list.
       const result = await client.listSessions({
         includeGlobal: false,
         includeUnknown: false,
         includeDerivedTitles: true,
         includeLastMessage: true,
         agentId: state.currentAgentId,
+        activeMinutes: 120,
       });
       const items = result.sessions.map((session) => {
         const title = session.derivedTitle ?? session.displayName;

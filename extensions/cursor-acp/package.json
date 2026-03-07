@@ -1,0 +1,11 @@
+{
+  "name": "@openclaw/cursor-acp",
+  "version": "2026.3.2",
+  "description": "OpenClaw ACP runtime backend for Cursor CLI (agent acp)",
+  "type": "module",
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

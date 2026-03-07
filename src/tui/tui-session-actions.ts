@@ -218,10 +218,12 @@ export function createSessionActions(context: SessionActionContext) {
         return parsed?.agentId ? normalizeAgentId(parsed.agentId) : state.currentAgentId;
       };
       const listAgentId = resolveListAgentId();
+      // Only consider sessions active in the last 2 hours so closed/old ACP sub-sessions don't appear.
       const result = await client.listSessions({
         includeGlobal: false,
         includeUnknown: false,
         agentId: listAgentId,
+        activeMinutes: 120,
       });
       const normalizeMatchKey = (key: string) => parseAgentSessionKey(key)?.rest ?? key;
       const currentMatchKey = normalizeMatchKey(state.currentSessionKey);

@@ -75,7 +75,7 @@ export function createSessionsSpawnTool(opts?: {
     label: "Sessions",
     name: "sessions_spawn",
     description:
-      'Spawn an isolated session (runtime="subagent" or runtime="acp"). mode="run" is one-shot and mode="session" is persistent/thread-bound.',
+      'Spawn an isolated session (runtime="subagent" or runtime="acp"). mode="run" is one-shot and mode="session" is persistent/thread-bound. Label must be unique across all sessions (use a suffix or timestamp if retrying). For runtime="acp", child progress and completion are relayed into this session by default so you and the user see Cursor output and know when the task finishes. For multi-turn conversation with the same session (e.g. five rounds with Cursor without user intervention): spawn once, then use sessions_send with the returned childSessionKey for each follow-up message; wait for the task completion event after each send before sending the next round. Do not spawn again for follow-up rounds.',
     parameters: SessionsSpawnToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;
@@ -98,7 +98,9 @@ export function createSessionsSpawnTool(opts?: {
       const cleanup =
         params.cleanup === "keep" || params.cleanup === "delete" ? params.cleanup : "keep";
       const sandbox = params.sandbox === "require" ? "require" : "inherit";
-      const streamTo = params.streamTo === "parent" ? "parent" : undefined;
+      // For ACP, default streamTo to "parent" so Cursor progress and completion are visible in this session.
+      const streamTo =
+        params.streamTo === "parent" ? "parent" : runtime === "acp" ? "parent" : undefined;
       // Back-compat: older callers used timeoutSeconds for this tool.
       const timeoutSecondsCandidate =
         typeof params.runTimeoutSeconds === "number"

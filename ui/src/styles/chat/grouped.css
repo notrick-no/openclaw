@@ -116,6 +116,13 @@
   color: var(--muted);
 }
 
+/* Cursor ACP subagent: black circle (placeholder avatar) */
+.chat-avatar.chat-avatar--cursor-subagent {
+  border-radius: 50%;
+  background: #111;
+  color: transparent;
+}
+
 /* Image avatar support */
 img.chat-avatar {
   display: block;

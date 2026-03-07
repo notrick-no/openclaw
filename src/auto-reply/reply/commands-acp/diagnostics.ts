@@ -2,9 +2,8 @@ import { getAcpSessionManager } from "../../../acp/control-plane/manager.js";
 import { formatAcpRuntimeErrorText } from "../../../acp/runtime/error-text.js";
 import { toAcpRuntimeError } from "../../../acp/runtime/errors.js";
 import { getAcpRuntimeBackend, requireAcpRuntimeBackend } from "../../../acp/runtime/registry.js";
-import { resolveSessionStorePathForAcp } from "../../../acp/runtime/session-meta.js";
-import { loadSessionStore } from "../../../config/sessions.js";
 import type { SessionEntry } from "../../../config/sessions/types.js";
+import { loadCombinedSessionStoreForGateway } from "../../../gateway/session-utils.js";
 import { getSessionBindingService } from "../../../infra/outbound/session-binding-service.js";
 import type { CommandHandlerResult, HandleCommandsParams } from "../commands-types.js";
 import { resolveAcpCommandBindingContext } from "./context.js";
@@ -153,21 +152,10 @@ export function handleAcpSessionsAction(
   }
 
   const currentSessionKey = resolveBoundAcpThreadSessionKey(params) || params.sessionKey;
-  if (!currentSessionKey) {
-    return stopWithText("⚠️ Missing session key.");
-  }
 
-  const { storePath } = resolveSessionStorePathForAcp({
-    cfg: params.cfg,
-    sessionKey: currentSessionKey,
-  });
-
-  let store: Record<string, SessionEntry>;
-  try {
-    store = loadSessionStore(storePath);
-  } catch {
-    store = {};
-  }
+  // Use combined store so ACP sessions from all agents (e.g. agent:cursor:acp:uuid) are visible
+  // even when the user's current session is agent:main:main.
+  const { store } = loadCombinedSessionStoreForGateway(params.cfg);
 
   const bindingContext = resolveAcpCommandBindingContext(params);
   const normalizedChannel = bindingContext.channel;

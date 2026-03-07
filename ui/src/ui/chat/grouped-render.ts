@@ -105,6 +105,11 @@ export function renderStreamingGroup(
   `;
 }
 
+/** Session key pattern for Cursor ACP subagent (show with Cursor avatar). */
+export function isCursorAcpSessionKey(sessionKey: string): boolean {
+  return String(sessionKey).startsWith("agent:cursor:acp:");
+}
+
 export function renderMessageGroup(
   group: MessageGroup,
   opts: {
@@ -112,6 +117,8 @@ export function renderMessageGroup(
     showReasoning: boolean;
     assistantName?: string;
     assistantAvatar?: string | null;
+    /** When true, show a black circle as avatar (e.g. for Cursor subagent). */
+    useCursorSubagentAvatar?: boolean;
   },
 ) {
   const normalizedRole = normalizeRoleForGrouping(group.role);
@@ -134,6 +141,7 @@ export function renderMessageGroup(
       ${renderAvatar(group.role, {
         name: assistantName,
         avatar: opts.assistantAvatar ?? null,
+        useCursorSubagentAvatar: opts.useCursorSubagentAvatar,
       })}
       <div class="chat-group-messages">
         ${group.messages.map((item, index) =>
@@ -155,10 +163,14 @@ export function renderMessageGroup(
   `;
 }
 
-function renderAvatar(role: string, assistant?: Pick<AssistantIdentity, "name" | "avatar">) {
+function renderAvatar(
+  role: string,
+  assistant?: Pick<AssistantIdentity, "name" | "avatar"> & { useCursorSubagentAvatar?: boolean },
+) {
   const normalized = normalizeRoleForGrouping(role);
   const assistantName = assistant?.name?.trim() || "Assistant";
   const assistantAvatar = assistant?.avatar?.trim() || "";
+  const useCursorSubagentAvatar = Boolean(assistant?.useCursorSubagentAvatar);
   const initial =
     normalized === "user"
       ? "U"
@@ -176,6 +188,13 @@ function renderAvatar(role: string, assistant?: Pick<AssistantIdentity, "name" |
           ? "tool"
           : "other";
 
+  if (normalized === "assistant" && useCursorSubagentAvatar) {
+    return html`<div
+      class="chat-avatar ${className} chat-avatar--cursor-subagent"
+      title="${assistantName}"
+      aria-label="${assistantName}"
+    ></div>`;
+  }
   if (assistantAvatar && normalized === "assistant") {
     if (isAvatarUrl(assistantAvatar)) {
       return html`<img

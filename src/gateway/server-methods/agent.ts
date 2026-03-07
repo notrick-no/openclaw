@@ -22,6 +22,7 @@ import { classifySessionKeyShape, normalizeAgentId } from "../../routing/session
 import { defaultRuntime } from "../../runtime.js";
 import { normalizeInputProvenance, type InputProvenance } from "../../sessions/input-provenance.js";
 import { resolveSendPolicy } from "../../sessions/send-policy.js";
+import { isAcpSessionKey } from "../../sessions/session-key-utils.js";
 import { normalizeSessionDeliveryFields } from "../../utils/delivery-context.js";
 import {
   INTERNAL_MESSAGE_CHANNEL,
@@ -58,6 +59,10 @@ import {
   waitForTerminalGatewayDedupe,
 } from "./agent-wait-dedupe.js";
 import { normalizeRpcAttachmentsToChatAttachments } from "./attachment-normalize.js";
+import {
+  appendAssistantMessageToSessionTranscript,
+  appendUserMessageToSessionTranscript,
+} from "./chat.js";
 import { sessionsHandlers } from "./sessions.js";
 import type { GatewayRequestHandlerOptions, GatewayRequestHandlers } from "./types.js";
 
@@ -612,6 +617,20 @@ export const agentHandlers: GatewayRequestHandlers = {
 
     const resolvedThreadId = explicitThreadId ?? deliveryPlan.resolvedThreadId;
 
+    // Persist prompt to ACP session transcript so chat.history shows agent↔Cursor dialogue.
+    if (resolvedSessionKey && isAcpSessionKey(resolvedSessionKey) && message.trim()) {
+      const userAppended = appendUserMessageToSessionTranscript({
+        sessionKey: resolvedSessionKey,
+        message: message.trim(),
+        idempotencyKey: `agent:${idem}:acp-user`,
+      });
+      if (!userAppended.ok) {
+        context.logGateway.warn(
+          `ACP session user message append failed: ${userAppended.error ?? "unknown"}`,
+        );
+      }
+    }
+
     void agentCommandFromIngress(
       {
         message,
@@ -669,6 +688,30 @@ export const agentHandlers: GatewayRequestHandlers = {
         // Send a second res frame (same id) so TS clients with expectFinal can wait.
         // Swift clients will typically treat the first res as the result and ignore this.
         respond(true, payload, undefined, { runId });
+
+        // Persist ACP session reply to transcript so chat.history / UI can show it after the run ends.
+        if (resolvedSessionKey && isAcpSessionKey(resolvedSessionKey)) {
+          const payloads = result?.payloads;
+          if (Array.isArray(payloads) && payloads.length > 0) {
+            const combined = payloads
+              .map((p: { text?: string }) => p?.text)
+              .filter(Boolean)
+              .join("\n\n")
+              .trim();
+            if (combined) {
+              const appended = appendAssistantMessageToSessionTranscript({
+                sessionKey: resolvedSessionKey,
+                message: combined,
+                idempotencyKey: `agent:${idem}:acp-reply`,
+              });
+              if (!appended.ok) {
+                context.logGateway.warn(
+                  `ACP session transcript append failed: ${appended.error ?? "unknown"}`,
+                );
+              }
+            }
+          }
+        }
       })
       .catch((err) => {
         const error = errorShape(ErrorCodes.UNAVAILABLE, String(err));

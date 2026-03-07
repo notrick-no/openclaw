@@ -32,6 +32,7 @@ import { getSubagentDepthFromSessionStore } from "../subagent-depth.js";
 import {
   clearSubagentRunSteerRestart,
   countPendingDescendantRuns,
+  getRunByChildSessionKey,
   listSubagentRunsForRequester,
   markSubagentRunTerminated,
   markSubagentRunForSteerRestart,
@@ -487,10 +488,16 @@ export function createSubagentsTool(opts?: { agentSessionKey?: string }): AnyAge
                 : "no running subagents to kill.",
           });
         }
-        const resolved = resolveSubagentTarget(runs, target, {
+        let resolved = resolveSubagentTarget(runs, target, {
           recentMinutes,
           isActive: isActiveRun,
         });
+        if (!resolved.entry && target?.includes(":")) {
+          const byKey = getRunByChildSessionKey(target.trim());
+          if (byKey) {
+            resolved = { entry: byKey };
+          }
+        }
         if (!resolved.entry) {
           return jsonResult({
             status: "error",
@@ -556,10 +563,16 @@ export function createSubagentsTool(opts?: { agentSessionKey?: string }): AnyAge
             error: `Message too long (${message.length} chars, max ${MAX_STEER_MESSAGE_CHARS}).`,
           });
         }
-        const resolved = resolveSubagentTarget(runs, target, {
+        let resolved = resolveSubagentTarget(runs, target, {
           recentMinutes,
           isActive: isActiveRun,
         });
+        if (!resolved.entry && target?.includes(":")) {
+          const byKey = getRunByChildSessionKey(target.trim());
+          if (byKey) {
+            resolved = { entry: byKey };
+          }
+        }
         if (!resolved.entry) {
           return jsonResult({
             status: "error",

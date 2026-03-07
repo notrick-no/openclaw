@@ -2,6 +2,7 @@ import { html, nothing } from "lit";
 import { ref } from "lit/directives/ref.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
+  isCursorAcpSessionKey,
   renderMessageGroup,
   renderReadingIndicatorGroup,
   renderStreamingGroup,
@@ -300,11 +301,13 @@ export function renderChat(props: ChatProps) {
           }
 
           if (item.kind === "group") {
+            const isCursor = item.sourceSessionKey && isCursorAcpSessionKey(item.sourceSessionKey);
             return renderMessageGroup(item, {
               onOpenSidebar: props.onOpenSidebar,
               showReasoning,
-              assistantName: props.assistantName,
-              assistantAvatar: assistantIdentity.avatar,
+              assistantName: isCursor ? "Cursor" : props.assistantName,
+              assistantAvatar: isCursor ? null : assistantIdentity.avatar,
+              useCursorSubagentAvatar: isCursor,
             });
           }
 
@@ -498,18 +501,27 @@ function groupMessages(items: ChatItem[]): Array<ChatItem | MessageGroup> {
     const normalized = normalizeMessage(item.message);
     const role = normalizeRoleForGrouping(normalized.role);
     const timestamp = normalized.timestamp || Date.now();
+    const raw = (item.message as Record<string, unknown>)?.__openclaw as
+      | Record<string, unknown>
+      | undefined;
+    const sourceSessionKey =
+      typeof raw?.sourceSessionKey === "string" ? raw.sourceSessionKey : undefined;
 
-    if (!currentGroup || currentGroup.role !== role) {
+    const sameRole = currentGroup?.role === role;
+    const sameAssistantSender =
+      role !== "assistant" || currentGroup?.sourceSessionKey === sourceSessionKey;
+    if (!currentGroup || !sameRole || !sameAssistantSender) {
       if (currentGroup) {
         result.push(currentGroup);
       }
       currentGroup = {
         kind: "group",
-        key: `group:${role}:${item.key}`,
+        key: `group:${role}:${sourceSessionKey ?? "main"}:${item.key}`,
         role,
         messages: [{ message: item.message, key: item.key }],
         timestamp,
         isStreaming: false,
+        sourceSessionKey: role === "assistant" ? sourceSessionKey : undefined,
       };
     } else {
       currentGroup.messages.push({ message: item.message, key: item.key });

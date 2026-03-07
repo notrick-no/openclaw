@@ -143,7 +143,9 @@ export async function applySessionsPatchToStore(params: {
           continue;
         }
         if (entry?.label === parsed.label) {
-          return invalid(`label already in use: ${parsed.label}`);
+          return invalid(
+            `label already in use: ${parsed.label}. Use a unique label (e.g. add a suffix or timestamp).`,
+          );
         }
       }
       next.label = parsed.label;

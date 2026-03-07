@@ -17,6 +17,8 @@ export type MessageGroup = {
   messages: Array<{ message: unknown; key: string }>;
   timestamp: number;
   isStreaming: boolean;
+  /** When set, this assistant group is from a subagent (e.g. Cursor ACP); UI may show its avatar. */
+  sourceSessionKey?: string;
 };
 
 /** Content item types in a normalized message */

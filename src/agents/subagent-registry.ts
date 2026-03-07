@@ -1300,6 +1300,26 @@ function findRunIdsByChildSessionKey(childSessionKey: string): string[] {
   return findRunIdsByChildSessionKeyFromRuns(subagentRuns, childSessionKey);
 }
 
+/** Return the latest run (by createdAt) for the given child session key, if any. Used when subagents tool target is a session key not found under current requester (e.g. key normalization). */
+export function getRunByChildSessionKey(childSessionKey: string): SubagentRunRecord | undefined {
+  const key = childSessionKey.trim();
+  if (!key) {
+    return undefined;
+  }
+  const runIds = findRunIdsByChildSessionKey(key);
+  let latest: SubagentRunRecord | undefined;
+  for (const runId of runIds) {
+    const entry = subagentRuns.get(runId);
+    if (!entry) {
+      continue;
+    }
+    if (!latest || (entry.createdAt ?? 0) > (latest.createdAt ?? 0)) {
+      latest = entry;
+    }
+  }
+  return latest;
+}
+
 export function resolveRequesterForChildSession(childSessionKey: string): {
   requesterSessionKey: string;
   requesterOrigin?: DeliveryContext;

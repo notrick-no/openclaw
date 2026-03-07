@@ -964,6 +964,8 @@ export function buildSubagentSystemPrompt(params: {
       ...(acpEnabled
         ? [
             'For ACP harness sessions (codex/claudecode/gemini), use `sessions_spawn` with `runtime: "acp"` (set `agentId` unless `acp.defaultAgent` is configured).',
+            "Use a unique `label` for each spawn (e.g. add a suffix or timestamp); duplicate labels are rejected.",
+            'When the user wants to see Cursor/ACP progress or get a summary in this session, pass `streamTo: "parent"` so the child run is relayed here and you can see output before replying.',
             '`agents_list` and `subagents` apply to OpenClaw sub-agents (`runtime: "subagent"`); ACP harness ids are controlled by `acp.allowedAgents`.',
             "Do not ask users to run slash commands or CLI when `sessions_spawn` can do it directly.",
             "Do not use `exec` (`openclaw ...`, `acpx ...`) to spawn ACP sessions.",
@@ -1015,9 +1017,9 @@ function buildAnnounceReplyInstruction(params: {
     return `Convert this completion into a concise internal orchestration update for your parent agent in your own words. Keep this internal context private (don't mention system/log/stats/session details or announce type). If this result is duplicate or no update is needed, reply ONLY: ${SILENT_REPLY_TOKEN}.`;
   }
   if (params.expectsCompletionMessage) {
-    return `A completed ${params.announceType} is ready for user delivery. Convert the result above into your normal assistant voice and send that user-facing update now. Keep this internal context private (don't mention system/log/stats/session details or announce type).`;
+    return `A completed ${params.announceType} is ready for user delivery. Give a brief user-facing summary (one short paragraph); do not copy the full result verbatim. Keep this internal context private (don't mention system/log/stats/session details or announce type). If this is part of a multi-round dialogue with the child session, immediately call sessions_send(sessionKey: <the session_key from this event>, message: <your next question or instruction>) to send the next round, then wait for the next completion event; do not stop after summarizing. Only ask the user for help or report completion when the full task is done or you genuinely need user input.`;
   }
-  return `A completed ${params.announceType} is ready for user delivery. Convert the result above into your normal assistant voice and send that user-facing update now. Keep this internal context private (don't mention system/log/stats/session details or announce type), and do not copy the internal event text verbatim. Reply ONLY: ${SILENT_REPLY_TOKEN} if this exact result was already delivered to the user in this same turn.`;
+  return `A completed ${params.announceType} is ready for user delivery. Give a brief user-facing summary (one short paragraph); do not copy the full result verbatim. Keep this internal context private (don't mention system/log/stats/session details or announce type). If this is part of a multi-round dialogue, call sessions_send(sessionKey: <session_key from this event>, message: <next round>) then wait for the next completion. Only ask the user when the task is complete or you need their help. Reply ONLY: ${SILENT_REPLY_TOKEN} if this exact result was already delivered to the user in this same turn.`;
 }
 
 function buildAnnounceSteerMessage(events: AgentInternalEvent[]): string {

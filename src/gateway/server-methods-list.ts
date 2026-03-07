@@ -97,6 +97,7 @@ const BASE_METHODS = [
   // WebChat WebSocket-native chat methods
   "chat.history",
   "chat.abort",
+  "chat.appendSubagentResult",
   "chat.send",
 ];
 

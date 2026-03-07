@@ -30,7 +30,7 @@ import {
   isSessionBindingError,
   type SessionBindingRecord,
 } from "../infra/outbound/session-binding-service.js";
-import { normalizeAgentId } from "../routing/session-key.js";
+import { normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.js";
 import { normalizeDeliveryContext } from "../utils/delivery-context.js";
 import {
   type AcpSpawnParentRelayHandle,
@@ -38,6 +38,7 @@ import {
   startAcpSpawnParentStreamRelay,
 } from "./acp-spawn-parent-stream.js";
 import { resolveSandboxRuntimeStatus } from "./sandbox/runtime-status.js";
+import { registerSubagentRun } from "./subagent-registry.js";
 
 export const ACP_SPAWN_MODES = ["run", "session"] as const;
 export type SpawnAcpMode = (typeof ACP_SPAWN_MODES)[number];
@@ -279,7 +280,8 @@ export async function spawnAcpDirect(
   if (spawnMode === "session" && !requestThreadBinding) {
     return {
       status: "error",
-      error: 'mode="session" requires thread=true so the ACP session can stay bound to a thread.',
+      error:
+        'mode="session" requires thread=true so the ACP session can stay bound to a thread. Use mode="run" and sessions_send with childSessionKey for follow-up rounds if thread is not needed.',
     };
   }
 
@@ -317,7 +319,7 @@ export async function spawnAcpDirect(
     if (!prepared.ok) {
       return {
         status: "error",
-        error: prepared.error,
+        error: `${prepared.error} Use mode=run and sessions_send with the returned childSessionKey for follow-up rounds in the same session.`,
       };
     }
     preparedBinding = prepared.binding;
@@ -338,13 +340,14 @@ export async function spawnAcpDirect(
       timeoutMs: 10_000,
     });
     sessionCreated = true;
+    const backendId = targetAgentId === "cursor" ? "cursor-acp" : (cfg.acp?.backend ?? undefined);
     const initialized = await acpManager.initializeSession({
       cfg,
       sessionKey,
       agent: targetAgentId,
       mode: runtimeMode,
       cwd: params.cwd,
-      backendId: cfg.acp?.backend,
+      backendId,
     });
     initializedRuntime = {
       runtime: initialized.runtime,
@@ -480,6 +483,25 @@ export async function spawnAcpDirect(
       error: summarizeError(err),
       childSessionKey: sessionKey,
     };
+  }
+
+  if (parentSessionKey && childRunId) {
+    try {
+      registerSubagentRun({
+        runId: childRunId,
+        childSessionKey: sessionKey,
+        requesterSessionKey: parentSessionKey,
+        requesterOrigin: requesterOrigin ?? undefined,
+        requesterDisplayKey: parseAgentSessionKey(parentSessionKey)?.agentId ?? "main",
+        task: params.task,
+        cleanup: "keep",
+        label: params.label || targetAgentId,
+        spawnMode,
+        expectsCompletionMessage: true,
+      });
+    } catch {
+      // Best-effort: list/steer still work without registry entry.
+    }
   }
 
   if (streamToParentRequested && parentSessionKey) {

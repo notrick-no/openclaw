@@ -57,7 +57,11 @@ import { formatForLog } from "../ws-log.js";
 import { injectTimestamp, timestampOptsFromConfig } from "./agent-timestamp.js";
 import { setGatewayDedupeEntry } from "./agent-wait-dedupe.js";
 import { normalizeRpcAttachmentsToChatAttachments } from "./attachment-normalize.js";
-import { appendInjectedAssistantMessageToTranscript } from "./chat-transcript-inject.js";
+import {
+  appendInjectedAssistantMessageToTranscript,
+  appendSubagentResultToTranscript,
+  appendUserMessageToTranscript,
+} from "./chat-transcript-inject.js";
 import type { GatewayRequestContext, GatewayRequestHandlers } from "./types.js";
 
 type TranscriptAppendResult = {
@@ -448,6 +452,126 @@ function appendAssistantTranscriptMessage(params: {
   });
 }
 
+/**
+ * Append an assistant message to a session's transcript by sessionKey.
+ * Used so ACP (and similar) runs persist replies for chat.history / UI.
+ */
+export function appendAssistantMessageToSessionTranscript(params: {
+  sessionKey: string;
+  message: string;
+  idempotencyKey?: string;
+}): TranscriptAppendResult {
+  const sessionKey = params.sessionKey?.trim();
+  if (!sessionKey) {
+    return { ok: false, error: "sessionKey required" };
+  }
+  const { storePath, entry, cfg } = loadSessionEntry(sessionKey);
+  const sessionId = entry?.sessionId;
+  if (!sessionId) {
+    return { ok: false, error: "session entry or sessionId missing" };
+  }
+  return appendAssistantTranscriptMessage({
+    message: params.message,
+    sessionId,
+    storePath,
+    sessionFile: entry?.sessionFile,
+    agentId: resolveSessionAgentId({ sessionKey, config: cfg }),
+    createIfMissing: true,
+    idempotencyKey: params.idempotencyKey,
+  });
+}
+
+/**
+ * Append a user message to a session's transcript by sessionKey.
+ * Used so ACP session chat.history shows prompts sent by the main agent (sessions_send).
+ */
+export function appendUserMessageToSessionTranscript(params: {
+  sessionKey: string;
+  message: string;
+  idempotencyKey?: string;
+}): TranscriptAppendResult {
+  const sessionKey = params.sessionKey?.trim();
+  if (!sessionKey) {
+    return { ok: false, error: "sessionKey required" };
+  }
+  const { storePath, entry, cfg } = loadSessionEntry(sessionKey);
+  const sessionId = entry?.sessionId;
+  if (!sessionId) {
+    return { ok: false, error: "session entry or sessionId missing" };
+  }
+  const transcriptPath = resolveTranscriptPath({
+    sessionId,
+    storePath,
+    sessionFile: entry?.sessionFile,
+    agentId: resolveSessionAgentId({ sessionKey, config: cfg }),
+  });
+  if (!transcriptPath) {
+    return { ok: false, error: "transcript path not resolved" };
+  }
+  if (!fs.existsSync(transcriptPath)) {
+    const ensured = ensureTranscriptFile({ transcriptPath, sessionId });
+    if (!ensured.ok) {
+      return { ok: false, error: ensured.error ?? "failed to create transcript file" };
+    }
+  }
+  if (params.idempotencyKey && transcriptHasIdempotencyKey(transcriptPath, params.idempotencyKey)) {
+    return { ok: true };
+  }
+  const result = appendUserMessageToTranscript({
+    transcriptPath,
+    message: params.message,
+    idempotencyKey: params.idempotencyKey,
+  });
+  return result.ok ? { ok: true } : { ok: false, error: result.error };
+}
+
+/**
+ * Append a subagent (e.g. Cursor ACP) result to a session's transcript so the UI
+ * can show it with the subagent's avatar (__openclaw.sourceSessionKey).
+ */
+export function appendSubagentResultToSessionTranscript(params: {
+  sessionKey: string;
+  message: string;
+  sourceSessionKey: string;
+  idempotencyKey?: string;
+}): TranscriptAppendResult {
+  const sessionKey = params.sessionKey?.trim();
+  const sourceSessionKey = params.sourceSessionKey?.trim();
+  if (!sessionKey || !sourceSessionKey) {
+    return { ok: false, error: "sessionKey and sourceSessionKey required" };
+  }
+  const { storePath, entry, cfg } = loadSessionEntry(sessionKey);
+  const sessionId = entry?.sessionId;
+  if (!sessionId) {
+    return { ok: false, error: "session entry or sessionId missing" };
+  }
+  const transcriptPath = resolveTranscriptPath({
+    sessionId,
+    storePath,
+    sessionFile: entry?.sessionFile,
+    agentId: resolveSessionAgentId({ sessionKey, config: cfg }),
+  });
+  if (!transcriptPath) {
+    return { ok: false, error: "transcript path not resolved" };
+  }
+  if (!fs.existsSync(transcriptPath)) {
+    const ensured = ensureTranscriptFile({ transcriptPath, sessionId });
+    if (!ensured.ok) {
+      return { ok: false, error: ensured.error ?? "failed to create transcript file" };
+    }
+  }
+  if (params.idempotencyKey && transcriptHasIdempotencyKey(transcriptPath, params.idempotencyKey)) {
+    return { ok: true };
+  }
+  const result = appendSubagentResultToTranscript({
+    transcriptPath,
+    message: params.message,
+    sourceSessionKey,
+    idempotencyKey: params.idempotencyKey,
+  });
+  return result.ok ? { ok: true } : { ok: false, error: result.error };
+}
+
 function collectSessionAbortPartials(params: {
   chatAbortControllers: Map<string, ChatAbortControllerEntry>;
   chatRunBuffers: Map<string, string>;
@@ -655,6 +779,45 @@ export const chatHandlers: GatewayRequestHandlers = {
       thinkingLevel,
       verboseLevel,
     });
+  },
+  "chat.appendSubagentResult": async ({ params, respond }) => {
+    if (
+      !params ||
+      typeof (params as { sessionKey?: unknown }).sessionKey !== "string" ||
+      typeof (params as { message?: unknown }).message !== "string" ||
+      typeof (params as { sourceSessionKey?: unknown }).sourceSessionKey !== "string"
+    ) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          "sessionKey, message, and sourceSessionKey required",
+        ),
+      );
+      return;
+    }
+    const { sessionKey, message, sourceSessionKey, idempotencyKey } = params as {
+      sessionKey: string;
+      message: string;
+      sourceSessionKey: string;
+      idempotencyKey?: string;
+    };
+    const result = appendSubagentResultToSessionTranscript({
+      sessionKey,
+      message,
+      sourceSessionKey,
+      idempotencyKey,
+    });
+    if (!result.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, result.error ?? "append failed"),
+      );
+      return;
+    }
+    respond(true, { ok: true });
   },
   "chat.abort": ({ params, respond, context }) => {
     if (!validateChatAbortParams(params)) {
