@@ -272,8 +272,8 @@ export async function spawnAcpDirect(
     };
   }
 
-  const requestThreadBinding = params.thread === true;
-  const spawnMode = resolveSpawnMode({
+  let requestThreadBinding = params.thread === true;
+  let spawnMode = resolveSpawnMode({
     requestedMode: params.mode,
     threadRequested: requestThreadBinding,
   });
@@ -305,7 +305,6 @@ export async function spawnAcpDirect(
   }
 
   const sessionKey = `agent:${targetAgentId}:acp:${crypto.randomUUID()}`;
-  const runtimeMode = resolveAcpSessionMode(spawnMode);
 
   let preparedBinding: PreparedAcpThreadBinding | null = null;
   if (requestThreadBinding) {
@@ -317,13 +316,15 @@ export async function spawnAcpDirect(
       threadId: ctx.agentThreadId,
     });
     if (!prepared.ok) {
-      return {
-        status: "error",
-        error: `${prepared.error} Use mode=run and sessions_send with the returned childSessionKey for follow-up rounds in the same session.`,
-      };
+      // Thread bindings unavailable (e.g. Feishu, webchat): spawn in run mode so the agent
+      // can use sessions_send with childSessionKey for follow-up rounds.
+      requestThreadBinding = false;
+      spawnMode = "run";
+    } else {
+      preparedBinding = prepared.binding;
     }
-    preparedBinding = prepared.binding;
   }
+  const runtimeMode = resolveAcpSessionMode(spawnMode);
 
   const acpManager = getAcpSessionManager();
   const bindingService = getSessionBindingService();
