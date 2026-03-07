@@ -11,6 +11,7 @@ import {
 } from "../../gateway/credentials.js";
 import { isWSL } from "../../infra/wsl.js";
 import { defaultRuntime } from "../../runtime.js";
+import { forceFreePort } from "../ports.js";
 import {
   buildDaemonServiceSnapshot,
   createNullWriter,
@@ -202,18 +203,45 @@ export async function runServiceStop(params: {
   serviceNoun: string;
   service: GatewayService;
   opts?: DaemonLifecycleOptions;
+  /** On Linux, when service check fails, try killing process on this port as fallback. */
+  portFallback?: number;
 }) {
   const json = Boolean(params.opts?.json);
   const { stdout, emit, fail } = createActionIO({ action: "stop", json });
 
-  const loaded = await resolveServiceLoadedOrFail({
-    serviceNoun: params.serviceNoun,
-    service: params.service,
-    fail,
-  });
-  if (loaded === null) {
+  let loaded: boolean | null = null;
+  try {
+    loaded = await params.service.isLoaded({ env: process.env });
+  } catch (err) {
+    if (
+      process.platform === "linux" &&
+      typeof params.portFallback === "number" &&
+      params.portFallback > 0
+    ) {
+      try {
+        const killed = forceFreePort(params.portFallback);
+        if (killed.length > 0) {
+          emit({
+            ok: true,
+            result: "stopped",
+            message: `Stopped gateway process(es) on port ${params.portFallback} (${killed.map((p) => p.pid).join(", ")}).`,
+            service: buildDaemonServiceSnapshot(params.service, false),
+          });
+          if (!json) {
+            defaultRuntime.log(
+              `Stopped gateway process(es) on port ${params.portFallback} (systemd check unavailable; used port fallback).`,
+            );
+          }
+          return;
+        }
+      } catch {
+        /* fall through to fail */
+      }
+    }
+    fail(`${params.serviceNoun} service check failed: ${String(err)}`);
     return;
   }
+
   if (!loaded) {
     emit({
       ok: true,

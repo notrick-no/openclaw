@@ -55,10 +55,14 @@ export async function runDaemonStart(opts: DaemonLifecycleOptions = {}) {
 }
 
 export async function runDaemonStop(opts: DaemonLifecycleOptions = {}) {
+  const port = await resolveGatewayRestartPort().catch(() =>
+    resolveGatewayPort(loadConfig(), process.env),
+  );
   return await runServiceStop({
     serviceNoun: "Gateway",
     service: resolveGatewayService(),
     opts,
+    portFallback: port,
   });
 }
 
